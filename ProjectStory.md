@@ -39,8 +39,26 @@ fi setata ca orice valoare >=20% (in mod evident cu un debounce realizat
 pe un interval de minim 500ms, suficient pentru a fi mai rapid decat 
 umplerea acvarilui).
 
-# Saptamana 5
+# Saptamana 5 - 6
 
 @TODO schema mecanica a mecanismului de hranire si printarea lui 3D.
 @TODO implementarea in cod (RTOS) a functionalitatii de hranire si
 senzoristica.
+
+# Saptamana 7
+
+Am achizitionat 4 electrovalve, le-am verificat, am facut cablajul aferent montajului.
+Am achizitionat 3 relee de controlate la 5V(output - 10A @220V) pentru comanda electrovalvelor
+si a pompei de apa ambele actionate @220V.
+
+# Saptamana 8
+
+Am achizitionat furtun pentru realizarea circuitului apei:
+* scoaterea apei uzate din acvariu intr-un recipient extern
+* umplerea cu apa filtrata si tratata a acvariului
+Realizarea fizica a circuitului de apa si testarea lui.
+
+# Saptamana 9 - 11
+
+Realizarea fizica finala a intregului proiect si testarea lui, ca elemente discrete,
+urmand integrarea lor in cadrul sistemului de operare facut in pasii anteriori.
