@@ -38,6 +38,8 @@ bool waitSecondFinished = true;
 #define AquariumWaterLevel A0
 #define WasteTankWaterLevel A1
 
+#define MIN_DETECTION_LEVEL 150
+
 EventGroupHandle_t rtc_event_group;
 int LIGHT = (1 << 0);
 int FEED = (1 << 1);
@@ -106,16 +108,21 @@ void TaskSensorsRead(void *pvParameters)
 {
   (void) pvParameters;
   //@TODO Add initial task setup
-
+  int sensorInBarrel = 0;
    for (;;)
   {
     //Calling this task once every 30s
     xEventGroupWaitBits(rtc_event_group, SENSOR, pdTRUE, pdTRUE, portMAX_DELAY);
-    Serial.println("SENSOR");
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-
-    //@TODO one function per sensor to read
-    //Set results in gobal variables (as small as possible) so they can be used by other tasks
+    // Serial.println("SENSOR");
+    sensorInBarrel = analogRead(WasteTankWaterLevel);
+    if(sensorInBarrel >= MIN_DETECTION_LEVEL)
+    {
+      sensorNotOk = 1;
+    }
+    else
+    {
+      sensorNotOk = 0;
+    }
   }
 }
 
@@ -126,7 +133,6 @@ void TaskFeed(void *pvParameters)
 
    for (;;)
   {
-    //Calling task once every 60s
     xEventGroupWaitBits(rtc_event_group, FEED, pdTRUE, pdTRUE, portMAX_DELAY);
     Serial.println("FEED");
   }
