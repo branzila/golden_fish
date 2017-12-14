@@ -1,15 +1,16 @@
 //Hardware init if needed global and comments about task reserved hardware:
 //A4 / A5 RTC via i2c
-//A0 water lvl sensor
+//A0 water lvl sensor1
+//A1 water lvl sensor 2
 //P13 Feeder (MPP)
 //P12 Pump
 //P11 / P10 Valve
-// P9 LED
+//P9 Turn on/off the whole water management system
+//P8 LED
   
 //Libraries
 #include <Arduino_FreeRTOS.h>
 #include <event_groups.h>
-//#include <event_groups.c>
 #include <FreeRTOSConfig.h>
 #include <stdio.h>
 #include <Wire.h>
@@ -30,11 +31,20 @@ bool waitSecondFinished = true;
 #define SATURDAY 6
 #define SUNDAY 7
 
+#define WaterPump 12
+#define FillAquarium 10
+#define EmptyAquarium 11
+#define TurnOnWaterSystem 9
+#define AquariumWaterLevel A0
+#define WasteTankWaterLevel A1
+
 EventGroupHandle_t rtc_event_group;
 int LIGHT = (1 << 0);
 int FEED = (1 << 1);
 int WATER = (1 << 2);
 int SENSOR = (1 << 3);
+
+bool sensorNotOk = 0;
 
 //Forward task functions declarations
 void TaskSensorsRead(void *pvParameters);
@@ -55,6 +65,14 @@ void setup()
   Serial.begin(9600);
   Wire.begin();
   RTC.begin();
+
+  // Initializing pins for all needed purposes
+  pinMode(FillAquarium, OUTPUT);
+  pinMode(EmptyAquarium, OUTPUT);
+  pinMode(WaterPump, OUTPUT);
+  pinMode(TurnOnWaterSystem, OUTPUT);
+  pinMode(AquariumWaterLevel, INPUT);
+  pinMode(WasteTankWaterLevel, INPUT);
   
   if (!RTC.isrunning())
   {
@@ -117,14 +135,66 @@ void TaskFeed(void *pvParameters)
 void TaskWater(void *pvParameters)
 {
   (void) pvParameters;
+  //P12 Pump
+  //P11 / P10 Valve
+  //P9 
   //@TODO Add initial task setup
-
-   for (;;)
+  int itrt_a = 0;
+  uint32_t MAXTIME = 30; // Number of seconds to keep the pump running
+  bool okToFill = 1;
+  
+  for (;;)
   {
-    xEventGroupWaitBits(rtc_event_group, WATER, pdTRUE, pdTRUE, portMAX_DELAY);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    xEventGroupWaitBits(rtc_event_group, WATER, pdFALSE, pdTRUE, portMAX_DELAY);
     //@TODO log when draining begun and calculate when to stop
     //@TODO log when starting to fill and calculate when to stop
+    digitalWrite(TurnOnWaterSystem, HIGH);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    digitalWrite(EmptyAquarium, HIGH);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    digitalWrite(WaterPump, HIGH);
+    
+    for(itrt_a = 0; itrt_a <= MAXTIME; itrt_a++)
+    {
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      if(sensorNotOk)
+      {
+        digitalWrite(WaterPump, LOW);
+        digitalWrite(TurnOnWaterSystem, LOW);
+        okToFill = 0;
+        xEventGroupClearBits(rtc_event_group, WATER);
+        break;
+      }
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
+    
+    if(okToFill)
+    { 
+      digitalWrite(WaterPump, LOW);
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      digitalWrite(EmptyAquarium, LOW);
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      digitalWrite(FillAquarium, HIGH);
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      digitalWrite(WaterPump, HIGH);
+
+      // Check if sensor is ok while pumping water for given time
+      for(itrt_a = 0; itrt_a <= MAXTIME; itrt_a++)
+      {
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        if(sensorNotOk)
+        {
+          digitalWrite(WaterPump, LOW);
+          digitalWrite(TurnOnWaterSystem, LOW);
+          okToFill = 0;
+          xEventGroupClearBits(rtc_event_group, WATER);
+        }
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+      }
+    }
+    digitalWrite(WaterPump, LOW);
+    digitalWrite(TurnOnWaterSystem, LOW);
+    xEventGroupClearBits(rtc_event_group, WATER);
   }
 }
 
@@ -135,7 +205,6 @@ void TaskRTC(void *pvParameters)
   for(;;)
   {
     rtc_get_time();
-
     feed_time_manager();
     water_time_manager();
     sensor_read_time_manager();
@@ -143,7 +212,7 @@ void TaskRTC(void *pvParameters)
   }
 }
 
-//Functions:
+//Functions used by tasks:
 
 void rtc_get_time()
 {
