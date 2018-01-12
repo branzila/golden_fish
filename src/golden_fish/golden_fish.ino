@@ -3,9 +3,8 @@
 //A0 water lvl sensor1
 //A1 water lvl sensor 2
 //P13 Feeder (MPP)
-//P12 Pump
-//P11 / P10 Valve
-//P9 Turn on/off the whole water management system
+//P12 Pump fill
+//P11 Pump emprty
 //P8 LED
   
 //Libraries
@@ -31,10 +30,9 @@ bool waitSecondFinished = true;
 #define SATURDAY 6
 #define SUNDAY 7
 
-#define WaterPump 12
-#define FillAquarium 10
+#define Feeder 13
+#define FillAquarium 12
 #define EmptyAquarium 11
-#define TurnOnWaterSystem 9
 #define AquariumWaterLevel A0
 #define WasteTankWaterLevel A1
 
@@ -47,6 +45,8 @@ int WATER = (1 << 2);
 int SENSOR = (1 << 3);
 
 bool sensorNotOk = 0;
+uint8_t oldTime = 100;
+uint8_t newTime = 0;
 
 //Forward task functions declarations
 void TaskSensorsRead(void *pvParameters);
@@ -69,12 +69,12 @@ void setup()
   RTC.begin();
 
   // Initializing pins for all needed purposes
+  pinMode(Feeder, OUTPUT);
   pinMode(FillAquarium, OUTPUT);
   pinMode(EmptyAquarium, OUTPUT);
-  pinMode(WaterPump, OUTPUT);
-  pinMode(TurnOnWaterSystem, OUTPUT);
-  pinMode(AquariumWaterLevel, INPUT);
   pinMode(WasteTankWaterLevel, INPUT);
+  pinMode(AquariumWaterLevel, INPUT);
+
   
   if (!RTC.isrunning())
   {
@@ -113,7 +113,6 @@ void TaskSensorsRead(void *pvParameters)
   {
     //Calling this task once every 30s
     xEventGroupWaitBits(rtc_event_group, SENSOR, pdTRUE, pdTRUE, portMAX_DELAY);
-    // Serial.println("SENSOR");
     sensorInBarrel = analogRead(WasteTankWaterLevel);
     if(sensorInBarrel >= MIN_DETECTION_LEVEL)
     {
@@ -134,39 +133,32 @@ void TaskFeed(void *pvParameters)
    for (;;)
   {
     xEventGroupWaitBits(rtc_event_group, FEED, pdTRUE, pdTRUE, portMAX_DELAY);
-    Serial.println("FEED");
+	digitalWrite(Feeder, HIGH); // step
   }
 }
 
 void TaskWater(void *pvParameters)
 {
   (void) pvParameters;
-  //P12 Pump
-  //P11 / P10 Valve
-  //P9 
-  //@TODO Add initial task setup
+
   int itrt_a = 0;
-  uint32_t MAXTIME = 30; // Number of seconds to keep the pump running
+  uint32_t MAXTIME = 10; // Number of seconds to keep the pump running
   bool okToFill = 1;
+  uint32_t MAXTIME_FILL = 60;
   
   for (;;)
   {
     xEventGroupWaitBits(rtc_event_group, WATER, pdFALSE, pdTRUE, portMAX_DELAY);
     //@TODO log when draining begun and calculate when to stop
     //@TODO log when starting to fill and calculate when to stop
-    digitalWrite(TurnOnWaterSystem, HIGH);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    digitalWrite(EmptyAquarium, HIGH);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    digitalWrite(WaterPump, HIGH);
+    digitalWrite(EmptyAquarium, LOW);
     
     for(itrt_a = 0; itrt_a <= MAXTIME; itrt_a++)
     {
       vTaskDelay(500 / portTICK_PERIOD_MS);
       if(sensorNotOk)
       {
-        digitalWrite(WaterPump, LOW);
-        digitalWrite(TurnOnWaterSystem, LOW);
+        digitalWrite(EmptyAquarium, HIGH);
         okToFill = 0;
         xEventGroupClearBits(rtc_event_group, WATER);
         break;
@@ -176,30 +168,24 @@ void TaskWater(void *pvParameters)
     
     if(okToFill)
     { 
-      digitalWrite(WaterPump, LOW);
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      digitalWrite(EmptyAquarium, LOW);
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      digitalWrite(FillAquarium, HIGH);
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      digitalWrite(WaterPump, HIGH);
+      digitalWrite(EmptyAquarium, HIGH);
+      vTaskDelay(3000 / portTICK_PERIOD_MS);
+      digitalWrite(FillAquarium, LOW);
 
       // Check if sensor is ok while pumping water for given time
-      for(itrt_a = 0; itrt_a <= MAXTIME; itrt_a++)
+      for(itrt_a = 0; itrt_a <= MAXTIME_FILL; itrt_a++)
       {
         vTaskDelay(500 / portTICK_PERIOD_MS);
         if(sensorNotOk)
         {
-          digitalWrite(WaterPump, LOW);
-          digitalWrite(TurnOnWaterSystem, LOW);
+          digitalWrite(EmptyAquarium, HIGH);
           okToFill = 0;
           xEventGroupClearBits(rtc_event_group, WATER);
         }
         vTaskDelay(500 / portTICK_PERIOD_MS);
       }
     }
-    digitalWrite(WaterPump, LOW);
-    digitalWrite(TurnOnWaterSystem, LOW);
+    digitalWrite(EmptyAquarium, HIGH);
     xEventGroupClearBits(rtc_event_group, WATER);
   }
 }
@@ -229,7 +215,7 @@ void rtc_get_time()
 void feed_time_manager()
 {
   /*This functions sets the feeding every 5 hours*/
-  if(currentTime.hour() == 9)
+  if(currentTime.hour() == 8)
   {
     if(mustFeed)
     {
@@ -237,12 +223,12 @@ void feed_time_manager()
       mustFeed = false;
     }
   }
-  if(currentTime.hour() == 10)
+  if(currentTime.hour() == 9)
   {
     mustFeed = true;
   }
   
-  if(currentTime.hour() == 14)
+  if(currentTime.hour() == 12)
   {
     if(mustFeed)
     {
@@ -250,12 +236,12 @@ void feed_time_manager()
       mustFeed = false;
     }
   }
-  if(currentTime.hour() == 15)
+  if(currentTime.hour() == 13)
   {
    mustFeed = true;
   }
   
-  if(currentTime.hour() == 19)
+  if(currentTime.hour() == 16)
   {
     if(mustFeed)
     {
@@ -263,7 +249,20 @@ void feed_time_manager()
       mustFeed = false;
     }
   }
-  if(currentTime.hour() == 20)
+  if(currentTime.hour() == 17)
+  {
+    mustFeed = true;
+  }
+  
+   if(currentTime.hour() == 20)
+  {
+    if(mustFeed)
+    {
+      xEventGroupSetBits(rtc_event_group, FEED);
+      mustFeed = false;
+    }
+  }
+  if(currentTime.hour() == 21)
   {
     mustFeed = true;
   }
@@ -300,14 +299,10 @@ void TEST_TIME()
 
 void sensor_read_time_manager()
 {
-  if((currentTime.second() == 25 || currentTime.second() == 55) && waitSecondFinished)
-  {
-    xEventGroupSetBits(rtc_event_group, SENSOR);
-    waitSecondFinished = false;
-  }
-  if(currentTime.second() == 26 || currentTime.second() ==  56)
-  {
-    waitSecondFinished = true;
-  }
+	newTime = currentTime.second();
+	if(oldTime != newTime)
+	{
+		 xEventGroupSetBits(rtc_event_group, SENSOR);
+	}
 }
 
